@@ -73,19 +73,19 @@ search_twiter <- function(){
   
   #Date range: yyyy-mm-dd  #Da erro quando as datas são iguais
   #ini_date <- as.Date(readline(prompt = "The inicial date (yyyy-mm-dd): "), format = "%Y-%m-%d") #Inicial date
-  ini_date <- as.Date("2019-07-14", format = "%Y-%m-%d")
+  ini_date <- as.Date("2019-07-20", format = "%Y-%m-%d")
   #final_date <- as.Date(readline(prompt = "The final date (yyyy-mm-dd): "), format = "%Y-%m-%d") #Final date
-  final_date <- as.Date("2019-07-15", format = "%Y-%m-%d")
+  final_date <- as.Date("2019-07-22", format = "%Y-%m-%d")
   n_days <- as.integer(final_date - ini_date)
   
   #Searching
   tweets <- c()
   date <- c()
-  for(day in 0:n_days){
+  for(day in 0:n_days-1){
     tweets <- c(tweets, clean_tweets(searchTwitter(searchString = search_string, n = n_tweets,
                                                    lang = language, locale = loc,
                                                    since = as.character(ini_date + day),
-                                                   until = as.character(ini_date + day))))
+                                                   until = as.character(ini_date + day + 1))))
     
     date <- c(date, rep(ini_date + day, n_tweets))
   }
@@ -104,19 +104,32 @@ View(tweets_df)
 #Tokenization  
 library(tidytext)
 tweets_tokens <- tweets_df %>%
-  unnest_tokens(words, clean_tweets)
+  unnest_tokens(words, tweets)
 View(tweets_tokens)
 
-#Word frequency
-  tweets_tokens %>%
+#Wordcloud
+install.packages("tm")  # for text mining
+install.packages("SnowballC") # for text stemming
+install.packages("wordcloud") # word-cloud generator 
+install.packages("RColorBrewer") # color palettes
+# Load
+library("tm")
+library("SnowballC")
+library("wordcloud")
+library("RColorBrewer")
+
+wc <- function(tweets_tokens){
+  plot <- tweets_tokens %>%
     group_by(words) %>%
     summarise(freq = n()) %>%
-    filter(freq > 100) %>%
-    mutate(words = reorder(words, freq)) %>%
-    ggplot() +
-    aes(x = words, y = freq) +
-    geom_col() +
-    coord_flip()
+    filter(words != "ifood")
+  
+  wordcloud(words = plot$words, freq = plot$freq, min.freq = 1,
+            max.words=200, random.order=FALSE, rot.per=0.35, 
+            colors=brewer.pal(8, "Dark2"))
+}
+
+wc(tweets_tokens)
 
 #Stopwords
 #install.packages("stopwords")
@@ -138,42 +151,40 @@ View(lex_pt)
 
 tweets_tokens <- tweets_tokens %>%
   inner_join(lex_pt, by = c("words" = "term")) %>%
-  select(n_tweet, words, polarity)
+  select(tweetID, date, words, polarity)
 
 View(tweets_tokens)
 
 #Most negative tweets
-glimpse(tweets_tokens)
-
 top_10_neg <- tweets_tokens %>%
-  group_by(n_tweet) %>%
+  group_by(tweetID) %>%
   summarise(polarity = sum(polarity)) %>%
   arrange(polarity) %>%
   head(10)
 
   #Ordering
-  top_10_neg$n_tweet <- factor(top_10_neg$n_tweet,
-                               levels = unique(top_10_neg$n_tweet)[order(top_10_neg$polarity,
+  top_10_neg$tweetID <- factor(top_10_neg$tweetID,
+                               levels = unique(top_10_neg$tweetID)[order(top_10_neg$polarity,
                                                                            decreasing = TRUE)])
   #PLOT
-  ggplot(top_10_neg, aes(n_tweet, polarity)) +
+  ggplot(top_10_neg, aes(tweetID, polarity)) +
     geom_col(fill = "lightcoral") +
     coord_flip() +
     xlab("Tweet ID") + ylab("Polarity") + ggtitle("Top 10 negative Polarity x Tweet ID")
 
 #Most positive tweets
 top_10_pos <- tweets_tokens %>%
-  group_by(n_tweet) %>%
+  group_by(tweetID) %>%
   summarise(polarity = sum(polarity)) %>%
   arrange(desc(polarity)) %>%
   head(10)
 
   #Ordering
-  top_10_pos$n_tweet <- factor(top_10_pos$n_tweet,
-                               levels = unique(top_10_pos$n_tweet[order(top_10_pos$polarity,
+  top_10_pos$tweetID <- factor(top_10_pos$tweetID,
+                               levels = unique(top_10_pos$tweetID[order(top_10_pos$polarity,
                                                                         decreasing = FALSE)]))
   #Plot
-  ggplot(top_10_pos, aes(n_tweet,polarity)) +
+  ggplot(top_10_pos, aes(tweetID, polarity)) +
     geom_col(fill = "cornflowerblue") +
     coord_flip() +
     xlab("Tweet ID") + ylab("Polarity") + ggtitle("Top 10 positive Polarity x Tweet ID")
@@ -182,7 +193,7 @@ top_10_pos <- tweets_tokens %>%
 str(tweets_tokens)
 
 tweets_tokens %>%
-  group_by(n_tweet) %>%
+  group_by(tweetID) %>%
   summarise(polarity = sum(polarity)) %>%
   mutate(class = ifelse(polarity > 0, "positive",
                        ifelse(polarity < 0, "negative", "neutral"))) %>%
@@ -192,10 +203,11 @@ tweets_tokens %>%
   xlab("Class") + ylab("Number of tweets") + ggtitle("Class x Number of tweets")
 
 #Time series
+tweets_tokens %>%
+  group_by(date) %>%
+  summarise(polarity = sum(polarity)) %>%
+  ggplot(aes(date, polarity, group = 1)) +
+  geom_line() +
+  ggtitle("Polarity x Date")
 
 
-#Teste
-tt <- searchTwitter(searchString = search_string, n = n_tweets,
-              lang = language, locale = loc,
-              since = as.character(Sys.Date() - 1),
-              until = as.character(Sys.Date()))
